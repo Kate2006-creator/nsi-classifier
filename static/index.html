@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>НСИ Классификатор</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>НСИ Классификатор должностей</h1>
+            <p class="subtitle">Введите название должности и получите её эталон</p>
+        </header>
+
+        <div class="search-section">
+            <form id="classifyForm">
+                <input type="text" id="positionInput" 
+                       placeholder="Например: врач-терапевт" 
+                       autocomplete="off">
+                <button type="submit">Найти эталон</button>
+            </form>
+            <div id="result" class="result hidden"></div>
+        </div>
+
+        <div class="stats-section" id="statsSection">
+    <h2>📊 Статистика</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">7 770</div>
+            <div class="stat-label">Всего должностей</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">7 726</div>
+            <div class="stat-label">Классифицировано</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">99.4%</div>
+            <div class="stat-label">Покрытие</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">62</div>
+            <div class="stat-label">Эталонов</div>
+        </div>
+    </div>
+</div>
+
+        <div class="etalon-section">
+            <h2>Эталонный справочник</h2>
+            <div id="etalonList">
+                <p class="loading">Загрузка эталонов...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
