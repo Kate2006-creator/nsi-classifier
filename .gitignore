@@ -18,10 +18,11 @@ env/
 
 # Данные и логи
 *.log
-*.csv
 *.db
 *.sqlite
-data/
+!data/
+!data/*.csv
+!data/*.md
 uploads/
 
 # IDE

@@ -1,30 +1,19 @@
 import pandas as pd
+import os
 
 def load_data():
-#Загружает данные из CSV файлов
-    df_clean = pd.read_csv('data/cleaned_positions.csv')
-    cluster_df = pd.read_csv('data/clusters_final.csv')
-    etalon_df = pd.read_csv('data/etalon_final.csv')
+    files = {
+        'positions': 'data/positions_with_etalon.csv',
+        'clusters': 'data/clusters_final.csv',
+        'etalons': 'data/etalon_final.csv',
+    }
+    
+    for name, path in files.items():
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Файл {path} не найден!")
+    
+    df_clean = pd.read_csv(files['positions'])
+    cluster_df = pd.read_csv(files['clusters'])
+    etalon_df = pd.read_csv(files['etalons'])
     
     return df_clean, cluster_df, etalon_df
-
-def classify_position(name, df_clean, etalon_df):
-#Классифицирует одну должность
-    cluster_to_etalon = dict(zip(etalon_df['cluster_id'], etalon_df['etalon_name']))
-    name_to_cluster = dict(zip(df_clean['core_name'], df_clean['cluster']))
-    
-    cluster = name_to_cluster.get(name.lower().strip())
-    if cluster is not None:
-        etalon = cluster_to_etalon.get(cluster)
-        return {
-            "position": name,
-            "cluster": int(cluster),
-            "etalon": etalon,
-            "found": True
-        }
-    return {
-        "position": name,
-        "cluster": None,
-        "etalon": None,
-        "found": False
-    }

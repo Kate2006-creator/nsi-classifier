@@ -1,17 +1,20 @@
 async function loadStats() {
     try {
         const response = await fetch('/stats');
-        const stats = await response.json();
+        const data = await response.json();
         
-        document.getElementById('totalPositions').textContent = stats.total_positions || 0;
-        document.getElementById('coveredPositions').textContent = stats.covered_positions || 0;
-        document.getElementById('coveragePercent').textContent = 
-            stats.coverage_percent ? stats.coverage_percent.toFixed(1) + '%' : '-';
-        document.getElementById('etalonCount').textContent = stats.etalon_count || 0;
+        document.getElementById('totalPositions').textContent = data.total_positions.toLocaleString('ru-RU');
+        document.getElementById('coveredPositions').textContent = data.covered_positions.toLocaleString('ru-RU');
+        document.getElementById('coveragePercent').textContent = data.coverage_percent.toFixed(1) + '%';
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
     }
 }
+
+// Вызов при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+});
 
 async function loadEtalons() {
     const container = document.getElementById('etalonList');

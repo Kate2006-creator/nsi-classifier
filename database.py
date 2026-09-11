@@ -3,6 +3,7 @@ from sqlalchemy.orm import sessionmaker
 from config import DATABASE_URL
 from models import Base
 import numpy as np
+import pandas as pd
 from sentence_transformers import SentenceTransformer
 
 engine = create_engine(DATABASE_URL)
@@ -33,7 +34,6 @@ def load_model():
     return model
 
 def save_etalons_to_db(etalon_df):
-#Сохраняет эталоны из CSV в БД с эмбеддингами
     from models import Etalon
     
     model = load_model()
@@ -42,69 +42,78 @@ def save_etalons_to_db(etalon_df):
     try:
         db.query(Etalon).delete()
         
-        # Получаем все названия эталонов
         etalon_names = etalon_df['etalon_name'].tolist()
         
-        # Считаем эмбеддинги для всех эталонов сразу (быстрее)
         print(f"Вычисляем эмбеддинги для {len(etalon_names)} эталонов")
         embeddings = model.encode(etalon_names, show_progress_bar=True)
-
+        
         for idx, row in etalon_df.iterrows():
             etalon = Etalon(
-                cluster_id=row['cluster_id'],
+                cluster_id=int(row['cluster_id']),
                 etalon_name=row['etalon_name'],
-                cluster_size=row['cluster_size'],
-                embedding=embeddings[idx].tolist() 
+                cluster_size=int(row.get('cluster_size', 0)),
+                embedding=embeddings[idx].tolist()
             )
             db.add(etalon)
         
         db.commit()
-        print(f"Сохранено {len(etalon_df)} эталонов с эмбеддингами в БД")
+        print(f"Сохранено {len(etalon_df)} эталонов")
     except Exception as e:
         db.rollback()
-        print(f"Ошибка при сохранении эталонов: {e}")
+        print(f"Ошибка: {e}")
         import traceback
         traceback.print_exc()
     finally:
         db.close()
 
+
 def save_positions_to_db(df_clean):
-#Сохраняет классифицированные должности в БД с удалением дубликатов
     from models import Position
     db = SessionLocal()
     
     try:
         db.query(Position).delete()
         
-        df_clean = df_clean.drop_duplicates(subset=['core_name'], keep='first')
-
         def safe_float(value):
             try:
                 return float(value)
             except (ValueError, TypeError):
                 return None
         
+        def safe_str(value):
+            if pd.isna(value):
+                return None
+            return str(value)
+        
         df_clean['cluster'] = df_clean['cluster'].apply(safe_float)
-        df_clean = df_clean.dropna(subset=['cluster'])
         
         for _, row in df_clean.iterrows():
             pos = Position(
-                core_name=row['core_name'],
-                cluster=float(row['cluster']),
-                etalon_name=row.get('etalon_name'),
-                confidence=float(row.get('confidence', 1.0))
+                # Связь с исходной системой
+                source_system=safe_str(row.get('source_system')),
+                department_code=safe_str(row.get('department_code')),
+                position_name=safe_str(row.get('position_name')),
+                core_name=safe_str(row.get('cleaned_name')),
+                category=safe_str(row.get('category')),
+                rate=safe_str(row.get('rate')),
+                harm=safe_str(row.get('harm')),
+                rank=safe_str(row.get('rank')),
+                cluster=safe_float(row.get('cluster')),
+                etalon_name=safe_str(row.get('etalon_name')),
+                confidence=safe_float(row.get('confidence')),
             )
             db.add(pos)
         
         db.commit()
-        print(f"Сохранено {len(df_clean)} должностей в БД")
+        print(f"Сохранено {len(df_clean)} должностей")
     except Exception as e:
         db.rollback()
-        print(f"Ошибка при сохранении должностей: {e}")
+        print(f" Ошибка: {e}")
         import traceback
         traceback.print_exc()
     finally:
         db.close()
+
 
 # Функция для получения всех эмбеддингов эталонов из БД
 def get_all_etalon_embeddings(db):

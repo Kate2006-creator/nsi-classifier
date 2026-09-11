@@ -5,29 +5,36 @@ from datetime import datetime
 Base = declarative_base()
 
 class Etalon(Base):
-    #Таблица с эталонными должностями
     __tablename__ = 'etalons'
     
     id = Column(Integer, primary_key=True)
     cluster_id = Column(Integer, unique=True, nullable=False)
     etalon_name = Column(String(255), nullable=False)
     cluster_size = Column(Integer, default=0)
-    embedding = Column(ARRAY(Float), nullable=True)  
+    embedding = Column(ARRAY(Float), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
 
+
 class Position(Base):
-    #Таблица со всеми должностями и их классификацией
     __tablename__ = 'positions'
     
     id = Column(Integer, primary_key=True)
-    core_name = Column(String(255), nullable=False, unique=True)
-    cluster = Column(Float)
-    etalon_name = Column(String(255))
-    confidence = Column(Float)
+    
+    source_system = Column(String(50), nullable=True)
+    department_code = Column(String(50), nullable=True)
+    position_name = Column(String(500), nullable=True)   
+    core_name = Column(String(255), nullable=True)      
+    category = Column(String(50), nullable=True)  
+    rate = Column(String(20), nullable=True)      
+    harm = Column(String(20), nullable=True)     
+    rank = Column(String(10), nullable=True)      
+    cluster = Column(Float, nullable=True)
+    etalon_name = Column(String(255), nullable=True)
+    confidence = Column(Float, nullable=True)     
     created_at = Column(DateTime, default=datetime.now)
 
+
 class ClassificationLog(Base):
-    #Лог запросов к классификатору
     __tablename__ = 'classification_logs'
     
     id = Column(Integer, primary_key=True)

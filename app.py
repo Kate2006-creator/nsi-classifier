@@ -21,15 +21,27 @@ def load_data_to_db():
     try:
         db = SessionLocal()
         existing_count = db.query(Position).count()
+        etalon_count = db.query(Etalon).count()
         db.close()
         
-        if existing_count > 0:
-            print(f"Данные уже загружены в БД: {existing_count} записей")
+        # Всегда загружаем эталоны в классификатор (даже если данные уже есть)
+        if existing_count > 0 and etalon_count > 0:
+            print(f"Данные уже загружены в БД: {existing_count} записей, {etalon_count} эталонов")
+            
+            # загружаем эмбединги в классиф-р
+            db = SessionLocal()
+            loaded = classifier.load_etalons(db)
+            db.close()
+            
+            if not loaded:
+                print("Эмбеддинги эталонов не загружены!")
+            else:
+                print(f"Семантический поиск готов: {len(classifier.etalon_names)} эталонов")
+            
             return True
         
         print("Загружаем данные из CSV файлов...")
         
-        # Загружаем данные
         df_clean, cluster_df, etalon_df = load_data()
         
         print(f"Загружено должностей: {len(df_clean)}")
@@ -38,6 +50,7 @@ def load_data_to_db():
         save_etalons_to_db(etalon_df)
         save_positions_to_db(df_clean)
 
+        # Загружаем эталоны в классификатор
         db = SessionLocal()
         classifier.load_etalons(db)
         db.close()
@@ -77,7 +90,8 @@ def normalize_query(query: str) -> str:
 
 def get_best_match(query: str, db: Session):
     if not query or query.strip() == "":
-        return None  
+        return None, None, 0.0, "none"
+    
     query = normalize_query(query)
     etalon_name, cluster, confidence = classifier.classify(query)
 
@@ -85,53 +99,37 @@ def get_best_match(query: str, db: Session):
         pos = db.query(Position).filter(Position.etalon_name == etalon_name).first()
         if pos:
             print(f"Найдено семантически: {pos.etalon_name} (уверенность: {confidence:.3f})")
-            return pos
+            return pos, etalon_name, confidence, "semantic"
     
-    #Строковые методы
+    # Строковые методы
     words = query.split()
-    
-    # Точное совпадение с core_name
-    pos = db.query(Position).filter(Position.core_name == query).first()
-    if pos:
-        print(f"Найдено точное совпадение: {pos.core_name}")
-        return pos
     
     # Точное совпадение с etalon_name
     pos = db.query(Position).filter(Position.etalon_name == query).first()
     if pos:
-        print(f"Найдено точное совпадение с эталоном: {pos.etalon_name}")
-        return pos
+        return pos, pos.etalon_name, 1.0, "string_exact"
     
-    # Частичное совпадение (содержит всю строку)
-    pos = db.query(Position).filter(Position.core_name.contains(query)).first()
-    if pos:
-        print(f"Найдено частичное совпадение: {pos.core_name}")
-        return pos
-    
-    #  Частичное совпадение по эталону
+    # Частичное совпадение
     pos = db.query(Position).filter(Position.etalon_name.contains(query)).first()
     if pos:
-        print(f"Найдено частичное совпадение с эталоном: {pos.etalon_name}")
-        return pos
+        return pos, pos.etalon_name, 0.8, "string_partial"
     
-    # Поиск по первому слову
+    # По первому слову
     first_word = words[0] if words else ""
     if len(first_word) > 2:
         pos = db.query(Position).filter(
-            Position.core_name.contains(first_word)
+            Position.etalon_name.contains(first_word)
         ).first()
         if pos:
-            print(f"Найдено по первому слову: {pos.core_name}")
-            return pos
+            return pos, pos.etalon_name, 0.5, "string_first_word"
     
+    # Семантика с низкой уверенностью
     if etalon_name:
         pos = db.query(Position).filter(Position.etalon_name == etalon_name).first()
         if pos:
-            print(f"Найдено с низкой уверенностью: {pos.etalon_name} (уверенность: {confidence:.3f})")
-            return pos
+            return pos, etalon_name, confidence, "semantic_low"
     
-    print(f" Ничего не найдено для: '{query}'")
-    return None
+    return None, None, 0.0, "none"
 
 
 def get_suggestions(query: str, db: Session, limit: int = 10):
@@ -222,7 +220,6 @@ async def classify(name: str, db: Session = Depends(get_db)):
     if not name or name.strip() == "":
         return {"error": "Введите название должности", "found": False}
     
-    # Проверяем, есть ли данные в БД
     count = db.query(Position).count()
     if count == 0:
         return {
@@ -231,39 +228,31 @@ async def classify(name: str, db: Session = Depends(get_db)):
             "message": "Нет данных для поиска"
         }
     
-    # Проверяем, загружены ли эталоны в классификатор
+    # Аварийная догрузка
     if len(classifier.etalon_names) == 0:
-        # Пробуем загрузить
         classifier.load_etalons(db)
     
-    pos = get_best_match(name, db)
+    pos, etalon, confidence, method = get_best_match(name, db)
     
     # Логируем запрос
     log = ClassificationLog(
         query=name,
-        result=pos.etalon_name if pos else None
+        result=etalon
     )
     db.add(log)
     db.commit()
- 
+    
     if pos and pos.etalon_name:
-        # Проверяем, уверенность из семантики
-        etalon_name, cluster, confidence = classifier.classify(name)
-        
-        if confidence < 0.4:
-            confidence = 0.3  # Ставим среднюю уверенность
-        
         return {
             "position": name,
             "etalon": pos.etalon_name,
             "cluster": pos.cluster,
-            "confidence": confidence,
+            "confidence": round(confidence, 3),   #  уверенность
             "found": True,
             "matched_core": pos.core_name,
-            "method": "semantic" if confidence > 0.5 else "string"
+            "method": method                       # и метод
         }
     else:
-        # Пробуем получить семантические подсказки
         suggestions = get_suggestions(name, db)
         return {
             "position": name,
@@ -273,7 +262,7 @@ async def classify(name: str, db: Session = Depends(get_db)):
             "suggestions": suggestions,
             "message": "Должность не найдена в справочнике"
         }
-
+    
 
 @app.get("/etalon")
 async def get_etalon(db: Session = Depends(get_db)):
@@ -291,6 +280,10 @@ async def search(query: str, db: Session = Depends(get_db)):
         return []
     
     query = normalize_query(query)
+    
+    # аварийная догрузка эталонов в классиф-р
+    if len(classifier.etalon_names) == 0:
+        classifier.load_etalons(db)
     
     # Сначала семантический поиск
     semantic_results = classifier.get_suggestions(query, limit=10)
@@ -319,13 +312,14 @@ async def get_stats(db: Session = Depends(get_db)):
     total = db.query(Position).count()
     covered = db.query(Position).filter(Position.etalon_name.isnot(None)).count()
     etalon_count = db.query(Etalon).count()
+    cluster_count = db.query(Position).distinct(Position.cluster).count()
     
     return {
         "total_positions": total,
         "covered_positions": covered,
-        "coverage_percent": covered / total * 100 if total > 0 else 0,
+        "coverage_percent": round(covered / total * 100, 1) if total > 0 else 0,
         "etalon_count": etalon_count,
-        "cluster_count": db.query(Position).distinct(Position.cluster).count()
+        "cluster_count": cluster_count
     }
 
 
